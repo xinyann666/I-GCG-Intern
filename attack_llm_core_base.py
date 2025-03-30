@@ -20,7 +20,6 @@ import os
 
 os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
 import gc
-import openai
 import time
 import numpy as np
 import torch
@@ -191,7 +190,7 @@ for i in range(num_steps):
         # We ensure the number of token remains to prevent the memory keeps growing and run into OOM.
         new_adv_suffix = get_filtered_cands(tokenizer,
                                             new_adv_suffix_toks,
-                                            filter_cand=True,
+                                            filter_cand=False,
                                             curr_control=adv_suffix)
 
         # Step 3.4 Compute loss on these candidates and take the argmin.

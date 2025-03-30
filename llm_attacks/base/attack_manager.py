@@ -652,7 +652,7 @@ class MultiPromptAttack(object):
         control_weight=None,
         anneal=True,
         anneal_from=0,
-        prev_loss=np.infty,
+        prev_loss=np.inf,
         stop_on_success=True,
         test_steps=50,
         log_first=False,
