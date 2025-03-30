@@ -157,10 +157,7 @@ def load_model_and_tokenizer(model_path, tokenizer_path=None, device_str='cuda',
         **kwargs
     ).eval()
 
-    # If multiple GPUs are available, wrap the model in DataParallel for simplicity
-    if torch.cuda.device_count() > 1:
-        print(f"Using {torch.cuda.device_count()} GPUs")
-        model = torch.nn.DataParallel(model)
+    
     
     model = model.to(device)
     

@@ -41,8 +41,9 @@ def check_for_attack_success(model, tokenizer, input_ids, assistant_role_slice, 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_path', type=str, default="internlm/internlm2_5-7b-chat")
-    parser.add_argument('--device', type=int, default=0)
+    parser.add_argument('--model_path', type=str, default="/hanjiaming/Internlm2_5-7b-chat")
+    # parser.add_argument('--device', type=int, default=0)
+    parser.add_argument('--device', type=int, nargs='+', default=[0,1,2,3,4,5,6,7])
     parser.add_argument('--id', type=int, default=50)
     parser.add_argument('--K', type=int, default=7)
     parser.add_argument('--defense', type=str, default="without_defense")
@@ -53,11 +54,14 @@ def main():
 
     ###meta-llama/Llama-2-7b-chat-hf
     args = parser.parse_args()
+   
 
     print(args.K)
 
     args.output_path=os.path.join(args.output_path,str(args.K))
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
+
+    # os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
+    os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, args.device))
 
     import gc
     import openai
@@ -147,7 +151,7 @@ def main():
     model, tokenizer = load_model_and_tokenizer(model_path,
                        low_cpu_mem_usage=True,
                        use_cache=False,
-                       device=device)
+                       device_str = device)
 
     # conv_template = load_conversation_template(template_name)
     conv_template = InternLMConvTemplate()
