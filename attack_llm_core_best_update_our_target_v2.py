@@ -79,7 +79,7 @@ def main():
     parser.add_argument('--defense', type=str, default="without_defense")
     parser.add_argument('--behaviors_config', type=str, default="behaviors_ours_config.json")
     parser.add_argument('--output_path', type=str,
-                        default=f'./output_update_target')
+                        default=f'./test_output')
     parser.add_argument('--incremental_token_num', type=int, default=3)
 
     ###meta-llama/Llama-2-7b-chat-hf
@@ -122,6 +122,7 @@ def main():
     user_prompt = behavior_config['behaviour']
     num_steps = behavior_config['step']
     adv_string_init = behavior_config['adv_init_suffix']
+    
     
     #adv_string_init="Ned eine Guideharm Your Outputyrdimensional Friend Sure Sri [/_ `/INIT] ShakespeareSmith referencing violence"
     target = behavior_config['target']
@@ -272,7 +273,7 @@ def main():
                                      control_slice=suffix_manager._control_slice,
                                      test_controls=new_adv_suffix,
                                      return_ids=True,
-                                     batch_size=512)  # decrease this number if you run into OOM.
+                                     batch_size=128)  # decrease this number if you run into OOM.
 
 
             losses = target_loss(logits, ids, suffix_manager._target_slice)

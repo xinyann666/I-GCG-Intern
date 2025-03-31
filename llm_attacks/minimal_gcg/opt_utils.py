@@ -6,7 +6,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import os
 import argparse
 import time
-
 from llm_attacks import get_embedding_matrix, get_embeddings
 
 
@@ -22,7 +21,7 @@ def token_gradients(model, input_ids, input_slice, target_slice, loss_slice):
     embeds = embeds.to(embed_weights.dtype)
 
     # Create a one-hot tensor on the correct device
-    print(f"input_ids[input_slice].shape: {input_ids[input_slice].shape}")  # e.g., [3]
+    # print(f"input_ids[input_slice].shape: {input_ids[input_slice].shape}")  # e.g., [3]
 
     one_hot = torch.zeros(
         input_ids[input_slice].shape[0],
@@ -90,7 +89,7 @@ def sample_control(control_toks, grad, batch_size, topk=256, temp=1, not_allowed
     new_control_toks = original_control_toks.scatter_(1, new_token_pos.unsqueeze(-1), new_token_val)
     return new_control_toks
 
-
+'''
 def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=None):
     cands, count = [], 0
     for i in range(control_cand.shape[0]):  # batch_size
@@ -167,6 +166,91 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
             cands = cands + [cands[-1]] * (len(control_cand) - len(cands))
     
     return cands
+'''
+
+def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=None, debug=False):
+   
+    cands = []
+    
+    for i in range(control_cand.shape[0]):
+        # Decode the candidate tokens into a string
+        decoded_str = tokenizer.decode(
+            control_cand[i], 
+            skip_special_tokens=True, 
+            clean_up_tokenization_spaces=False
+        )
+        
+        # Optionally print debugging info
+        if debug:
+            original_length = len(control_cand[i])
+            reencoded_length = len(tokenizer(decoded_str, add_special_tokens=False).input_ids)
+            print(f"[DEBUG] Candidate {i}: Original length: {original_length}, Re-encoded length: {reencoded_length}")
+        
+        # If filtering is enabled, check and adjust the candidate string
+        if filter_cand:
+            tokenized_ids = tokenizer(decoded_str, add_special_tokens=False).input_ids
+            if decoded_str != curr_control and len(tokenized_ids) == len(control_cand[i]):
+                cands.append(decoded_str)
+            else:
+                # Adjust decoded_str until the tokenized length matches the target length
+                target_len = len(control_cand[i])
+                print(f"target_len: {target_len}")
+                max_iter = 1000  # Safeguard to prevent infinite loops
+                iter_count = 0
+                
+                while iter_count < max_iter:
+                    current_ids = tokenizer(decoded_str, add_special_tokens=False).input_ids
+                    current_len = len(current_ids)
+                    
+                    if current_len > target_len:
+                        # Remove the last character to reduce token count
+                        decoded_str = decoded_str[:-1]
+                    elif current_len < target_len:
+                        # Append the last character to increase token count (if possible)
+                        if decoded_str:
+                            decoded_str = decoded_str + decoded_str[-1]
+                        else:
+                            break  # If decoded_str becomes empty, exit the loop
+                    else:
+                        # Length matches; exit the loop
+                        break
+                    
+                    iter_count += 1
+                
+                if iter_count >= max_iter:
+                    print(f"Warning: Maximum iterations reached for candidate {i} without matching target length.")
+                if decoded_str:
+                    print(f"newly added string after tokenzier length: {len(tokenizer(decoded_str, add_special_tokens=False).input_ids)}")
+                    cands.append(decoded_str)
+                else:
+                    print(f"Warning: Candidate {i} is empty after all iterations.")
+        else:
+            cands.append(decoded_str)
+    
+    # If filtering was enabled but some candidates were adjusted/omitted,
+    # extend the candidate list to match the original count by duplicating the last valid candidate.
+    if filter_cand and len(cands) < control_cand.shape[0]:
+        cands.extend([cands[-1]] * (control_cand.shape[0] - len(cands)))
+    return cands
+
+'''
+def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=None):
+    cands, count = [], 0
+    for i in range(control_cand.shape[0]):
+        decoded_str = tokenizer.decode(control_cand[i], skip_special_tokens=True)
+        if filter_cand:
+            if decoded_str != curr_control and len(tokenizer(decoded_str, add_special_tokens=False).input_ids) == len(control_cand[i]):
+                cands.append(decoded_str)
+            else:
+                count += 1
+        else:
+            cands.append(decoded_str)
+
+    if filter_cand:
+        cands = cands + [cands[-1]] * (len(control_cand) - len(cands))
+        # print(f"Warning: {round(count / len(control_cand), 2)} control candidates were not valid")
+    return cands
+'''
 
 
 
@@ -268,14 +352,13 @@ def get_logits(*, model, tokenizer, input_ids, control_slice, test_controls=None
         ))
 
     locs = torch.arange(control_slice.start, control_slice.stop).repeat(test_ids.shape[0], 1).to(model.device)
-    print(f"shape of locs: {locs.shape}") # [256,20]
+    # print(f"shape of locs: {locs.shape}") # [256,20]
     input_ids = input_ids.unsqueeze(0).repeat(test_ids.shape[0], 1).to(model.device)
-    print(f"shape of input_ids: {input_ids.shape}") # [256,121]
-    print(f"shape of test_ids: {test_ids.shape}") # [256,20]
+    # print(f"shape of input_ids: {input_ids.shape}") # [256,121]
+    # print(f"shape of test_ids: {test_ids.shape}") # [256,20]
     print(f"control slice start: {control_slice.start}") # 111
     print(f"control slice stop: {control_slice.stop}") # 131
    
-    
     ids = torch.scatter(
         input_ids,
         1,
@@ -296,11 +379,6 @@ def get_logits(*, model, tokenizer, input_ids, control_slice, test_controls=None
         del ids ; gc.collect()
         return logits
     
-
-
-
-
-
 
 def target_loss(logits, ids, target_slice):
     crit = nn.CrossEntropyLoss(reduction='none')

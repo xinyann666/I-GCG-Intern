@@ -47,8 +47,6 @@ class InternLMConvTemplate:
         prompt += "".join(self.messages)
         return prompt
 
-import torch
-
 class SuffixManager:
     def __init__(self, tokenizer, conv_template, instruction, target, adv_string):
         self.tokenizer = tokenizer
@@ -65,51 +63,49 @@ class SuffixManager:
     def get_prompt(self, adv_string=None):
         if adv_string is not None:
             self.adv_string = adv_string
-
+        # Clear previous messages.
         self.conv_template.messages = []
-
-        # Build initial prompt: system + meta_instruction
+        # Build initial prompt (system + meta_instruction)
         prompt_text = self.conv_template.get_prompt()
         prompt_ids = self.tokenizer(prompt_text, add_special_tokens=False).input_ids
-
-        # Append user message: instruction + adv_string
+        # Append user message: instruction + adv_string.
         space = " " if self.instruction else ""
         user_message = f"{self.instruction}{space}{self.adv_string}"
         self.conv_template.append_message(self.conv_template.user, user_message)
         user_prompt_text = self.conv_template.get_prompt()
         user_prompt_ids = self.tokenizer(user_prompt_text, add_special_tokens=False).input_ids
-
-        # Compute control_slice
-        control_start = len(prompt_ids) + len(self.tokenizer(f"{self.conv_template.user}{self.conv_template.separator}{self.instruction}{space}", add_special_tokens=False).input_ids)
+        # Compute _control_slice.
+        control_start = len(prompt_ids) + len(
+            self.tokenizer(f"{self.conv_template.user}{self.conv_template.separator}{self.instruction}{space}",
+                           add_special_tokens=False).input_ids
+        ) - 1
         control_end = len(user_prompt_ids)
         self._control_slice = slice(control_start, control_end)
-
-        # Get assistant marker tokens and calculate assistant role slice
-        assistant_marker = f"{self.conv_template.separator}{self.conv_template.assistant}{self.conv_template.separator}"
+        # Get assistant marker tokens and calculate assistant role slice.
+        # Remove trailing separator so that the target starts immediately after the marker.
+        assistant_marker = f"{self.conv_template.separator}{self.conv_template.assistant}"
         assistant_marker_ids = self.tokenizer(assistant_marker, add_special_tokens=False).input_ids
-        
-        # The assistant role starts after the user message
-        assistant_role_start = len(user_prompt_ids) 
+        assistant_role_start = len(user_prompt_ids)
         assistant_role_end = assistant_role_start + len(assistant_marker_ids)
         self._assistant_role_slice = slice(assistant_role_start, assistant_role_end)
-
-        # Append assistant message: target
+        # Append assistant message: target.
         self.conv_template.append_message(self.conv_template.assistant, self.target)
         full_prompt_text = self.conv_template.get_prompt()
         full_prompt_ids = self.tokenizer(full_prompt_text, add_special_tokens=False).input_ids
-
-        # Compute target_slice and loss_slice
+        # Compute _target_slice and _loss_slice.
         target_start = assistant_role_end
         target_end = len(full_prompt_ids)
         self._target_slice = slice(target_start, target_end)
         self._loss_slice = slice(target_start - 1, target_end - 1)
-
-        # Clear messages to ensure cleanliness
+        # Clear messages for the next call.
         self.conv_template.messages = []
-
         return full_prompt_text
 
     def get_input_ids(self, adv_string=None):
         prompt = self.get_prompt(adv_string)
         full_ids = self.tokenizer(prompt, add_special_tokens=False).input_ids
         return torch.tensor(full_ids[:self._target_slice.stop])
+
+
+
+       
