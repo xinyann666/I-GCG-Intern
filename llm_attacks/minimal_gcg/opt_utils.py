@@ -168,6 +168,7 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
     return cands
 '''
 
+# try 1
 def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=None, debug=False):
    
     cands = []
@@ -194,8 +195,8 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
             else:
                 # Adjust decoded_str until the tokenized length matches the target length
                 target_len = len(control_cand[i])
-                print(f"target_len: {target_len}")
-                max_iter = 1000  # Safeguard to prevent infinite loops
+                # print(f"target_len: {target_len}")
+                max_iter = 500 # Safeguard to prevent infinite loops
                 iter_count = 0
                 
                 while iter_count < max_iter:
@@ -218,9 +219,10 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
                     iter_count += 1
                 
                 if iter_count >= max_iter:
-                    print(f"Warning: Maximum iterations reached for candidate {i} without matching target length.")
+                    # print(f"Warning: Maximum iterations reached for candidate {i} without matching target length.")
+                    pass
                 if decoded_str:
-                    print(f"newly added string after tokenzier length: {len(tokenizer(decoded_str, add_special_tokens=False).input_ids)}")
+                    # print(f"newly added string after tokenzier length: {len(tokenizer(decoded_str, add_special_tokens=False).input_ids)}")
                     cands.append(decoded_str)
                 else:
                     print(f"Warning: Candidate {i} is empty after all iterations.")
@@ -233,7 +235,9 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
         cands.extend([cands[-1]] * (control_cand.shape[0] - len(cands)))
     return cands
 
+
 '''
+# try 2 : set to False
 def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=None):
     cands, count = [], 0
     for i in range(control_cand.shape[0]):
@@ -253,8 +257,6 @@ def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=N
 '''
 
 
-
-
 def forward(*, model, input_ids, attention_mask, batch_size=512):
     logits = []
     for i in range(0, input_ids.shape[0], batch_size):
@@ -264,7 +266,6 @@ def forward(*, model, input_ids, attention_mask, batch_size=512):
         gc.collect()
     return torch.cat(logits, dim=0)
 
-from torch.nn.utils.rnn import pad_sequence
 
 from torch.nn.utils.rnn import pad_sequence
 import torch
@@ -328,7 +329,7 @@ def get_logits(*, model, tokenizer, input_ids, control_slice, test_controls=None
 '''
 
 def get_logits(*, model, tokenizer, input_ids, control_slice, test_controls=None, return_ids=False, batch_size=512):
-    print(f"shape of input_ids: {input_ids.shape}") # [121]
+    # print(f"shape of input_ids: {input_ids.shape}") # [121]
     
     if isinstance(test_controls[0], str):
         max_len = control_slice.stop - control_slice.start
@@ -356,8 +357,8 @@ def get_logits(*, model, tokenizer, input_ids, control_slice, test_controls=None
     input_ids = input_ids.unsqueeze(0).repeat(test_ids.shape[0], 1).to(model.device)
     # print(f"shape of input_ids: {input_ids.shape}") # [256,121]
     # print(f"shape of test_ids: {test_ids.shape}") # [256,20]
-    print(f"control slice start: {control_slice.start}") # 111
-    print(f"control slice stop: {control_slice.stop}") # 131
+    # print(f"control slice start: {control_slice.start}") # 111
+    # print(f"control slice stop: {control_slice.stop}") # 131
    
     ids = torch.scatter(
         input_ids,
@@ -369,7 +370,7 @@ def get_logits(*, model, tokenizer, input_ids, control_slice, test_controls=None
         attn_mask = (ids != pad_tok).type(ids.dtype)
     else:
         attn_mask = None
-
+        
     if return_ids:
         del locs, test_ids ; gc.collect()
         return forward(model=model, input_ids=ids, attention_mask=attn_mask, batch_size=batch_size), ids

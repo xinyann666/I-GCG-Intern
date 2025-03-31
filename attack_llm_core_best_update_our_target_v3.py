@@ -77,7 +77,7 @@ def main():
     parser.add_argument('--id', type=int, default=50)
     parser.add_argument('--K', type=int, default=7)
     parser.add_argument('--defense', type=str, default="without_defense")
-    parser.add_argument('--behaviors_config', type=str, default="behaviors_ours_config.json")
+    parser.add_argument('--behaviors_config', type=str, default="./data/1_jbk_config.json")
     parser.add_argument('--output_path', type=str,
                         default=f'./test_output')
     parser.add_argument('--incremental_token_num', type=int, default=3)
@@ -262,7 +262,7 @@ def main():
             # token => string
             new_adv_suffix = get_filtered_cands(tokenizer,
                                                 new_adv_suffix_toks,
-                                                filter_cand= True,
+                                                filter_cand=True,
                                                 curr_control=adv_suffix)
             # print('new_adv_suffix',new_adv_suffix)
 
