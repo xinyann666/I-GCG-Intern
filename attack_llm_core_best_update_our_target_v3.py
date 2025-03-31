@@ -74,12 +74,12 @@ def main():
     parser.add_argument('--model_path', type=str, default="/root/internlm2-chat")
     # parser.add_argument('--device', type=int, default=0)
     parser.add_argument('--device', type=int, nargs='+', default=[0])
-    parser.add_argument('--id', type=int, default=50)
+    parser.add_argument('--id', type=int, default=1)
     parser.add_argument('--K', type=int, default=7)
     parser.add_argument('--defense', type=str, default="without_defense")
     parser.add_argument('--behaviors_config', type=str, default="./data/1_jbk_config.json")
     parser.add_argument('--output_path', type=str,
-                        default=f'./test_output')
+                        default=f'./challenge_test_output')
     parser.add_argument('--incremental_token_num', type=int, default=3)
 
     ###meta-llama/Llama-2-7b-chat-hf
