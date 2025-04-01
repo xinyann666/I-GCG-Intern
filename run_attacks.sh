@@ -47,7 +47,7 @@ for item in config:
         print("Skipping an item without an 'id'.")
         continue
     print(f"Processing item {id}")
-    command = f"python attack_llm_core_best_update_our_target_v4.py --id {id} --behaviors_config {config_file} --output_path {output_dir} --target_len_max 60"
+    command = f"python attack_llm_core_best_update_our_target_v5.py --id {id} --behaviors_config {config_file} --output_path {output_dir} --target_len_max 60"
     print("Executing:", command)
     ret = os.system(command)
     if ret != 0:
