@@ -5,6 +5,7 @@ import yaml
 import copy
 import os
 import csv
+import numpy as np
 from llm_attacks.minimal_gcg.string_utils import *
 from pathlib import Path
 
@@ -37,26 +38,7 @@ def check_for_attack_success(model, tokenizer, input_ids, assistant_role_slice, 
                                         assistant_role_slice,
                                         gen_config=gen_config)).strip()
     jailbroken = not any([prefix in gen_str for prefix in test_prefixes])
-    return jailbroken,gen_str
-
-def save_loss_log(loss_log, path):
-    """Helper function to save loss log"""
-    try:
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        
-        # Write the loss log to CSV
-        with open(path, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(['Step', 'Loss'])  # Header
-            for entry in loss_log:
-                writer.writerow([entry['step'], entry['loss']])
-                
-        print(f"Loss log saved to {path}")
-        return True
-    except Exception as e:
-        print(f"ERROR saving loss log to {path}: {str(e)}")
-        return False
+    return jailbroken, gen_str
 
 def main():
     parser = argparse.ArgumentParser()
@@ -90,7 +72,7 @@ def main():
 
     print(args.K)
 
-    args.output_path=os.path.join(args.output_path,str(args.K))
+    args.output_path = os.path.join(args.output_path, str(args.K))
 
     # os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
     os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, args.device))
@@ -117,23 +99,18 @@ def main():
 
     model_path = args.model_path
 
-    # sample_instances = pickle.load(open(f'./data/dev/sample_instances.pkl', 'rb'))
-    print('behavior_config:',args.behaviors_config)
+    print('behavior_config:', args.behaviors_config)
     user_prompt = behavior_config['behaviour']
     num_steps = behavior_config['step']
     adv_string_init = behavior_config['adv_init_suffix']
     
-    
-    #adv_string_init="Ned eine Guideharm Your Outputyrdimensional Friend Sure Sri [/_ `/INIT] ShakespeareSmith referencing violence"
     target = behavior_config['target']
     if len(target) > 100:
         target = target[:100]
         print(f"target:{target}")
-    # template_name = 'llama-2'
     device = "cuda"
     batch_size = behavior_config['batch_size']
     
-
     topk = behavior_config['top_k']
 
     incremental_token_num = args.incremental_token_num
@@ -187,26 +164,16 @@ def main():
     model, tokenizer = load_model_and_tokenizer(model_path,
                        low_cpu_mem_usage=True,
                        use_cache=False,
-                       device_str = device)
+                       device_str=device)
 
     # conv_template = load_conversation_template(template_name)
     conv_template = InternLMConvTemplate()
     
-    '''
-    adv_suffix = "! ! ! ! ! ! ! hello bye bye bye!"
-    adv_suffix_ids = tokenizer(adv_suffix, add_special_tokens=False).input_ids
-    print("Suffix string:", adv_suffix) 
-    print("Suffix token IDs:", adv_suffix_ids)
-    print("Number of tokens for suffix:", len(adv_suffix_ids)) 
-    '''
- 
     suffix_manager = SuffixManager(tokenizer=tokenizer,
                                conv_template=conv_template,
                                instruction=user_prompt,
                                target=target,
                                adv_string=adv_string_init)
-    
-    # print(f"Prompt: {suffix_manager.get_prompt()}")
     
     not_allowed_tokens = None if allow_non_ascii else get_nonascii_toks(tokenizer) # list of non-ascii tokens
     adv_suffix = adv_string_init
@@ -220,13 +187,11 @@ def main():
     current_tcs = []
     temp = 0
     v2_success_counter = 0
-    previous_update_k_loss=100
+    previous_update_k_loss = 100
     
     for i in range(num_steps):
-
         # Step 1. Encode user prompt (behavior + adv suffix) as tokens and return token ids.
         input_ids = suffix_manager.get_input_ids(adv_string=adv_suffix)
-        # print(f"shape of input_ids: {input_ids.shape}")
         input_ids = input_ids.to(device)
 
         # Step 2. Compute Coordinate Gradient
@@ -237,102 +202,49 @@ def main():
                                           suffix_manager._loss_slice)
 
         # Step 3. Sample a batch of new tokens based on the coordinate gradient.
-        # Notice that we only need the one that minimizes the loss.
         with torch.no_grad():
-            # Step 3.1 Slice the input to locate the adversarial suffix.
             adv_suffix_tokens = input_ids[suffix_manager._control_slice].to(device)
-            
-            # print(f"shape of adv_suffix_tokens: {adv_suffix_tokens.shape}") 
-           
-            # Step 3.2 Randomly sample a batch of replacements.
             new_adv_suffix_toks = sample_control(adv_suffix_tokens,
                                                  coordinate_grad,
                                                  batch_size,
                                                  topk=topk,
                                                  temp=1,
                                                  not_allowed_tokens=not_allowed_tokens)
-            # print(f"shape of new_adv_suffix_toks: {new_adv_suffix_toks.shape}") 
-
-            # Step 3.3 This step ensures all adversarial candidates have the same number of tokens.
-            # This step is necessary because tokenizers are not invertible
-            # so Encode(Decode(tokens)) may produce a different tokenization.
-            # We ensure the number of token remains to prevent the memory keeps growing and run into OOM.
-            # print(f"new_adv_suffix_toks: {new_adv_suffix_toks}") 
-            
-            
-            # token => string
             new_adv_suffix = get_filtered_cands(tokenizer,
                                                 new_adv_suffix_toks,
                                                 filter_cand=True,
                                                 curr_control=adv_suffix)
-            # print('new_adv_suffix',new_adv_suffix)
-
-            # Step 3.4 Compute loss on these candidates and take the argmin.
             logits, ids = get_logits(model=model,
                                      tokenizer=tokenizer,
                                      input_ids=input_ids,
                                      control_slice=suffix_manager._control_slice,
                                      test_controls=new_adv_suffix,
                                      return_ids=True,
-                                     batch_size=128)  # decrease this number if you run into OOM.
-
-
+                                     batch_size=128)
             losses = target_loss(logits, ids, suffix_manager._target_slice)
 
             k = args.K
-            losses_temp, idx1 = torch.sort(losses, descending=False)  # descending为false，升序，为True，降序  # loss ranking
+            losses_temp, idx1 = torch.sort(losses, descending=False)
             idx = idx1[:k]
 
             current_loss = 0
-            # best_new_adv_suffix=adv_suffix
-            # print('adv_suffix', adv_suffix)
-
             ori_adv_suffix_ids = tokenizer(adv_suffix, add_special_tokens=False).input_ids
             adv_suffix_ids = tokenizer(adv_suffix, add_special_tokens=False).input_ids
             best_new_adv_suffix_ids = copy.copy(adv_suffix_ids)
-            all_new_adv_suffix=[]
+            all_new_adv_suffix = []
             for idx_i in range(k):
                 idx = idx1[idx_i]
                 temp_new_adv_suffix = new_adv_suffix[idx]
-                
-                # print('temp_new_adv_suffix', temp_new_adv_suffix)
                 temp_new_adv_suffix_ids = tokenizer(temp_new_adv_suffix, add_special_tokens=False).input_ids
-                
-                # Make sure temp_new_adv_suffix_ids has the same length as adv_suffix_ids
                 if len(temp_new_adv_suffix_ids) < len(adv_suffix_ids):
-                    # If too short, pad with last token (or a safe token)
                     pad_token = temp_new_adv_suffix_ids[-1] if temp_new_adv_suffix_ids else 1
                     temp_new_adv_suffix_ids = temp_new_adv_suffix_ids + [pad_token] * (len(adv_suffix_ids) - len(temp_new_adv_suffix_ids))
                 elif len(temp_new_adv_suffix_ids) > len(adv_suffix_ids):
-                    # If too long, truncate
                     temp_new_adv_suffix_ids = temp_new_adv_suffix_ids[:len(adv_suffix_ids)]
-                
-                # Now safely compare and replace tokens
                 for suffix_num in range(len(adv_suffix_ids)):
                     if adv_suffix_ids[suffix_num] != temp_new_adv_suffix_ids[suffix_num]:
                         best_new_adv_suffix_ids[suffix_num] = temp_new_adv_suffix_ids[suffix_num]
-                
                 all_new_adv_suffix.append(tokenizer.decode(best_new_adv_suffix_ids, skip_special_tokens=True))
-
-            # best_new_adv_suffix = tokenizer.decode(best_new_adv_suffix_ids, skip_special_tokens=True)
-            # best_new_adv_suffix_list=[]
-            # best_new_adv_suffix_list.append(best_new_adv_suffix)
-            # print(best_new_adv_suffix_list)
-            # new_logits, new_ids = get_logits(model=model,
-            #                                  tokenizer=tokenizer,
-            #                                  input_ids=input_ids,
-            #                                  control_slice=suffix_manager._control_slice,
-            #                                  test_controls=best_new_adv_suffix_list,
-            #                                  return_ids=True,
-            #                                  batch_size=512)
-            # losses = target_loss(new_logits, new_ids, suffix_manager._target_slice)
-            #
-            # current_update_k_loss=losses[0]
-            # current_loss=current_update_k_loss
-            # print("current_update_k_loss",current_update_k_loss)
-            #
-            # print('best_new_adv_suffix',best_new_adv_suffix)
-            # print('all_new_adv_suffix',all_new_adv_suffix)
 
             new_logits, new_ids = get_logits(model=model,
                                          tokenizer=tokenizer,
@@ -351,48 +263,13 @@ def main():
             current_loss = losses[best_new_adv_suffix_id]
             print("current_loss", current_loss)
             
-            # Add the loss value to our loss_log
             loss_value = float(current_loss.detach().cpu().numpy())
             loss_log.append({"step": i, "loss": loss_value})
             
-            # Update the running adv_suffix with the best candidate
-            print("best_new_adv_suffix",best_new_adv_suffix)
+            print("best_new_adv_suffix", best_new_adv_suffix)
             adv_suffix = best_new_adv_suffix
 
-
-            # if  current_update_k_loss>previous_update_k_loss:
-            #
-            #     print('best_new_adv_suffix',best_new_adv_suffix)
-            #     print('all_new_adv_suffix',all_new_adv_suffix)
-            #
-            #     new_logits, new_ids = get_logits(model=model,
-            #                              tokenizer=tokenizer,
-            #                              input_ids=input_ids,
-            #                              control_slice=suffix_manager._control_slice,
-            #                              test_controls=all_new_adv_suffix,
-            #                              return_ids=True,
-            #                              batch_size=512)
-            #
-            #     losses = target_loss(new_logits, new_ids, suffix_manager._target_slice)
-            #
-            #     print(losses)
-            #     best_new_adv_suffix_id = losses.argmin()
-            #     best_new_adv_suffix = all_new_adv_suffix[best_new_adv_suffix_id]
-            #
-            #     current_loss = losses[best_new_adv_suffix_id]
-            #     print("current_loss",current_loss)
-            #     # Update the running adv_suffix with the best candidate
-            #     print("best_new_adv_suffix",best_new_adv_suffix)
-            #     adv_suffix = best_new_adv_suffix
-            # else:
-            #     adv_suffix = best_new_adv_suffix
-            #     previous_update_k_loss=current_update_k_loss
-
-            # print(a)
-            # current_loss = current_loss / k
-            # Update the running adv_suffix with the best candidate
-
-            is_success,gen_str = check_for_attack_success(model,
+            is_success, gen_str = check_for_attack_success(model,
                                                   tokenizer,
                                                   suffix_manager.get_input_ids(adv_string=adv_suffix).to(device),
                                                   suffix_manager._assistant_role_slice,
@@ -411,59 +288,55 @@ def main():
             if is_success:
                 success_dict.append(log_entry)
 
-            # if current_loss.detach().cpu().numpy()<0.05:
-            #     break
-            del coordinate_grad, adv_suffix_tokens;
+            del coordinate_grad, adv_suffix_tokens
             gc.collect()
             torch.cuda.empty_cache()
 
         if i % 10 == 0:
             # Save loss log at regular intervals
-            loss_log_dir = ensure_path(f'{args.output_path}/loss_logs')
-            loss_log_path = f'{loss_log_dir}/loss_log_{args.id}.csv'
+            loss_log_dir = os.path.join(args.output_path, 'loss_logs')
+            os.makedirs(loss_log_dir, exist_ok=True)
+            loss_log_path = ensure_path(os.path.join(loss_log_dir, f'loss_log_{args.id}.csv'))
             
-            # Write the loss log to CSV
-            with open(loss_log_path, 'w', newline='') as f:
+            with open(str(loss_log_path), 'w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(['Step', 'Loss', 'success'])  # Header
+                writer.writerow(['Step', 'Loss', 'success'])
                 for entry in loss_log:
-                    writer.writerow([entry['step'], entry['loss'], entry['success']])
-
+                    writer.writerow([entry['step'], entry['loss'], log_dict[entry['step']]['success']])
                     
             print(f"Loss log saved to {loss_log_path}")
             
-            # Log file
-            log_path = ensure_path(f'{args.output_path}/log/result_{args.id}.json')
-            success_path = ensure_path(f'{args.output_path}/log/success_{args.id}.json')
-            with open(log_path, 'w') as f:
+            log_dir = os.path.join(args.output_path, 'log')
+            os.makedirs(log_dir, exist_ok=True)
+            log_path = ensure_path(os.path.join(log_dir, f'result_{args.id}.json'))
+            success_path = ensure_path(os.path.join(log_dir, f'success_{args.id}.json'))
+            
+            with open(str(log_path), 'w') as f:
                 json.dump(log_dict, f, indent=4)
-            with open(success_path, 'w') as f:
+            with open(str(success_path), 'w') as f:
                 json.dump(success_dict, f, indent=4)
 
     # Final loss log writing at the end
-    loss_log_dir = ensure_path(f'{args.output_path}/loss_logs')
-    loss_log_path = f'{loss_log_dir}/loss_log_{args.id}.csv'
+    loss_log_dir = os.path.join(args.output_path, 'loss_logs')
+    os.makedirs(loss_log_dir, exist_ok=True)
+    loss_log_path = ensure_path(os.path.join(loss_log_dir, f'loss_log_{args.id}.csv'))
     
-    # Write the loss log to CSV
-    with open(loss_log_path, 'w', newline='') as f:
+    with open(str(loss_log_path), 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['Step', 'Loss', 'success'])  # Header
+        writer.writerow(['Step', 'Loss', 'success'])
         for entry in loss_log:
-            writer.writerow([entry['step'], entry['loss'], entry['success']])
+            writer.writerow([entry['step'], entry['loss'], log_dict[entry['step']]['success']])
             
     print(f"Final loss log saved to {loss_log_path}")
     
-    # Also save as a numpy file for efficient loading
-    np_loss_log_path = f'{loss_log_dir}/loss_log_{args.id}.npy'
-    np.save(np_loss_log_path, np.array([(entry['step'], entry['loss'], entry['success']) for entry in loss_log]))
+    np_loss_log_path = ensure_path(os.path.join(loss_log_dir, f'loss_log_{args.id}.npy'))
+    np.save(str(np_loss_log_path), np.array([(entry['step'], entry['loss'], entry['success']) for entry in loss_log]))
     print(f"NumPy loss log saved to {np_loss_log_path}")
     
-    # Log file
-    log_path = ensure_path(f'{args.output_path}/log/result_{args.id}.json')
-    with open(log_path, 'w') as f:
+    log_dir = os.path.join(args.output_path, 'log')
+    log_path = ensure_path(os.path.join(log_dir, f'result_{args.id}.json'))
+    with open(str(log_path), 'w') as f:
         json.dump(log_dict, f, indent=4)
-
-    
 
 if __name__ == "__main__":
     main()

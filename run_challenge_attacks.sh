@@ -1,33 +1,57 @@
 #!/bin/bash
 
-# Check if config file path is provided
-if [ $# -ne 1 ]; then
+# Trap Ctrl+C and terminate any running child processes
+trap "echo 'Script interrupted, stopping all processes...'; pkill -f 'attack_llm_core_best_update_our_target_v4.py'; exit 1" INT
+
+# Check if a config file path is provided
+if [ "$#" -ne 1 ]; then
     echo "Usage: $0 <config_json_path>"
     exit 1
 fi
 
-CONFIG_FILE=$1
-# Extract the prefix before "_config.json"
-PREFIX=$(echo "$CONFIG_FILE" | sed 's/_config\.json$//')
-OUTPUT_DIR="./challenge_output/${PREFIX}"
+CONFIG_FILE="$1"
+# Extract the prefix from the config file name (e.g., "1_jbk_config.json" -> "1_jbk")
+PREFIX=$(basename "$CONFIG_FILE" | sed 's/_config\.json$//')
+OUTPUT_DIR="./results/${PREFIX}"
 
-# Create output directory if it doesn't exist
+# Create the output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR"
 
-# Read the JSON file and process each item
-python3 -c "
-import json
-with open('$CONFIG_FILE', 'r') as f:
-    config = json.load(f)
-    for item in config:
-        id = item['id']
-        print(f'Processing item {id}')
-        print('python attack_llm_core_best_update_our_target_v4.py',
-              f'--id {id}',
-              f'--behaviors_config {CONFIG_FILE}',
-              f'--output_path {OUTPUT_DIR}')"
-" | while read cmd; do
-    echo "Executing: $cmd"
-    eval "$cmd"
-done
+echo "Reading config file: $CONFIG_FILE"
+echo "Output directory: $OUTPUT_DIR"
+echo "Press Ctrl+C at any time to stop all processes."
 
+# Process each item in the config file using an embedded Python script.
+python3 <<EOF
+import json
+import os
+import sys
+
+config_file = "$CONFIG_FILE"
+output_dir = "$OUTPUT_DIR"
+
+try:
+    with open(config_file, 'r') as f:
+        config = json.load(f)
+except Exception as e:
+    print(f"Error reading config file: {e}")
+    sys.exit(1)
+
+if not isinstance(config, list):
+    print("Config file must be a JSON list of items.")
+    sys.exit(1)
+
+for item in config:
+    id = item.get('id')
+    if id is None:
+        print("Skipping an item without an 'id'.")
+        continue
+    print(f"Processing item {id}")
+    command = f"python attack_llm_core_best_update_our_target_v4.py --id {id} --behaviors_config {config_file} --output_path {output_dir}"
+    print("Executing:", command)
+    ret = os.system(command)
+    if ret != 0:
+        print(f"Command failed with exit code {ret}")
+EOF
+
+echo "Done!"

@@ -43,7 +43,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_path', type=str, default="/hanjiaming/Internlm2_5-7b-chat")
     # parser.add_argument('--device', type=int, default=0)
-    parser.add_argument('--device', type=int, nargs='+', default=[0,1,2,3,4,5,6,7])
+    parser.add_argument('--device', type=int, nargs='+', default=[0])
     parser.add_argument('--id', type=int, default=50)
     parser.add_argument('--K', type=int, default=7)
     parser.add_argument('--defense', type=str, default="without_defense")
