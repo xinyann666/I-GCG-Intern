@@ -90,6 +90,7 @@ def sample_control(control_toks, grad, batch_size, topk=256, temp=1, not_allowed
     return new_control_toks
 
 '''
+# try 1
 def get_filtered_cands(tokenizer, control_cand, filter_cand=True, curr_control=None):
     cands, count = [], 0
     for i in range(control_cand.shape[0]):  # batch_size
@@ -333,10 +334,12 @@ def get_logits(*, model, tokenizer, input_ids, control_slice, test_controls=None
     
     if isinstance(test_controls[0], str):
         max_len = control_slice.stop - control_slice.start
+        # truncate
         test_ids = [
             torch.tensor(tokenizer(control, add_special_tokens=False).input_ids[:max_len], device=model.device)
             for control in test_controls
         ]
+        # pad
         pad_tok = 0
         while pad_tok in input_ids or any([pad_tok in ids for ids in test_ids]):
             pad_tok += 1
