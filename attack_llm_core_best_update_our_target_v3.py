@@ -126,8 +126,9 @@ def main():
     
     #adv_string_init="Ned eine Guideharm Your Outputyrdimensional Friend Sure Sri [/_ `/INIT] ShakespeareSmith referencing violence"
     target = behavior_config['target']
-    if len(target) > 50:
-        target = target[:50]
+    if len(target) > 100:
+        target = target[:100]
+        print(f"target:{target}")
     # template_name = 'llama-2'
     device = "cuda"
     batch_size = behavior_config['batch_size']
