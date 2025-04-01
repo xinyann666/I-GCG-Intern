@@ -119,6 +119,8 @@ def main():
     target = behavior_config['target']
   
     target = truncate_target(target, target_len_max)
+    print("target", target)
+    time.sleep(10)
     
 
     device = "cuda"
@@ -194,6 +196,10 @@ def main():
 
     log_dict = []
     success_dict = []
+    
+    # the first item is the original intented instruction
+    success_suffix_list = []
+    success_suffix_list.append(user_prompt)
     
     # Create a list to specifically track losses
     loss_log = []
@@ -301,6 +307,7 @@ def main():
             log_dict.append(log_entry)
             if is_success:
                 success_dict.append(log_entry)
+                success_suffix_list.append(best_new_adv_suffix)
 
             del coordinate_grad, adv_suffix_tokens
             gc.collect()
@@ -323,11 +330,14 @@ def main():
             log_dir = os.path.join(args.output_path, 'log')
             os.makedirs(log_dir, exist_ok=True)
             log_path = ensure_path(os.path.join(log_dir, f'result_{args.id}.json'))
-            success_path = ensure_path(os.path.join(log_dir, f'success_{args.id}.json'))
+            success_suffix_path = ensure_path(os.path.join(log_dir, f'success_suffix_{args.id}.json'))
+            success_dict_path = ensure_path(os.path.join(log_dir, f'success_dict_{args.id}.json'))
             
             with open(str(log_path), 'w') as f:
                 json.dump(log_dict, f, indent=4)
-            with open(str(success_path), 'w') as f:
+            with open(str(success_suffix_path), 'w') as f:
+                json.dump(success_suffix_list, f, indent=4)
+            with open(str(success_dict_path), 'w') as f:
                 json.dump(success_dict, f, indent=4)
 
     # Final loss log writing at the end

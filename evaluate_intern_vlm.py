@@ -12,6 +12,7 @@ import pandas as pd
 import csv
 from PIL import Image
 import requests
+from io import BytesIO
 from pathlib import Path
 from torch.cuda.amp import autocast
 
@@ -42,10 +43,9 @@ def parse_args():
                       
     return parser.parse_args()
    
-def ensure_path(filepath):
-    path = Path(filepath)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    return path
+
+def ensure_path(path):
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
 
 def main():
     args = parse_args()
