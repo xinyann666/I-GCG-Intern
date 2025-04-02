@@ -50,7 +50,7 @@ def ensure_path(path):
 
 def deepseek_judger(system_prompt, user_input, max_retries=5, retry_delay=2):
     client = OpenAI(
-        api_key="sk-e0412234d90b4259ad63a96c2c80d43a",
+        api_key="sk-1234567890",
         base_url="https://api.deepseek.com"
     )
 
